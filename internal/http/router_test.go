@@ -8,13 +8,16 @@ import (
 
 	"go.uber.org/zap"
 
-	"scripts/swarm_stub/internal/service"
-	"scripts/swarm_stub/pkg/swarm"
+	"github.com/cxhub/swarm-mock/internal/service"
+	"github.com/cxhub/swarm-mock/pkg/swarm"
 )
 
 func TestRouter(t *testing.T) {
 	log := zap.NewNop()
-	svc := service.NewStub()
+	svc, err := service.NewStub()
+	if err != nil {
+		t.Fatalf("NewStub() error = %v", err)
+	}
 
 	r := NewRouter(log, svc)
 	putBody := swarm.PackTuple([][]byte{[]byte("a:b"), []byte("c"), []byte("d"), []byte("value")})

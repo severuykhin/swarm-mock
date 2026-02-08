@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 )
 
 const (
 	// DefaultHTTPAddr определяет адрес HTTP-сервера по умолчанию.
 	DefaultHTTPAddr = "127.0.0.1:11208"
 
-	envHTTPAddr = "SWARM_STUB_HTTP_ADDR"
+	envHTTPAddr            = "SWARM_STUB_HTTP_ADDR"
+	envPersistencePath     = "SWARM_STUB_DATA_PATH"
+	envPersistenceInterval = "SWARM_STUB_PERSIST_INTERVAL"
 )
 
 // HTTPConfig содержит настройки HTTP-сервера.
@@ -20,7 +23,14 @@ type HTTPConfig struct {
 
 // Config агрегирует настройки приложения.
 type Config struct {
-	HTTP HTTPConfig
+	HTTP        HTTPConfig
+	Persistence PersistenceConfig
+}
+
+// PersistenceConfig описывает параметры сохранения состояния.
+type PersistenceConfig struct {
+	Path     string
+	Interval time.Duration
 }
 
 // Load загружает конфигурацию из переменных окружения с дефолтами.
@@ -34,8 +44,29 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("config: %w", err)
 	}
 
+	persistencePath := os.Getenv(envPersistencePath)
+	if persistencePath == "" {
+		persistencePath = "swarm_stub_snapshot.json"
+	}
+
+	interval := time.Minute
+	if rawInterval := os.Getenv(envPersistenceInterval); rawInterval != "" {
+		parsed, err := time.ParseDuration(rawInterval)
+		if err != nil {
+			return Config{}, fmt.Errorf("config: invalid persistence interval: %w", err)
+		}
+		if parsed < 0 {
+			return Config{}, fmt.Errorf("config: persistence interval must be non-negative")
+		}
+		interval = parsed
+	}
+
 	return Config{
 		HTTP: HTTPConfig{Addr: addr},
+		Persistence: PersistenceConfig{
+			Path:     persistencePath,
+			Interval: interval,
+		},
 	}, nil
 }
 

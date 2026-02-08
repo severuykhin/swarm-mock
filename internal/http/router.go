@@ -7,8 +7,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
 
-	handlerpkg "scripts/swarm_stub/internal/handler"
-	"scripts/swarm_stub/internal/service"
+	handlerpkg "github.com/cxhub/swarm-mock/internal/handler"
+	"github.com/cxhub/swarm-mock/internal/service"
 )
 
 // NewRouter собирает HTTP-маршруты.

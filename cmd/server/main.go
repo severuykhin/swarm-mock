@@ -10,10 +10,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"scripts/swarm_stub/internal/config"
-	transport "scripts/swarm_stub/internal/http"
-	"scripts/swarm_stub/internal/logger"
-	"scripts/swarm_stub/internal/service"
+	"github.com/cxhub/swarm-mock/internal/config"
+	transport "github.com/cxhub/swarm-mock/internal/http"
+	"github.com/cxhub/swarm-mock/internal/logger"
+	"github.com/cxhub/swarm-mock/internal/service"
 )
 
 func main() {
@@ -31,11 +31,23 @@ func main() {
 		l.Fatal("failed to load config", zap.Error(err))
 	}
 
-	svc := service.NewStub()
+	persistence := service.NewJSONPersistence(cfg.Persistence.Path)
+	svc, err := service.NewStub(
+		service.WithPersistence(persistence),
+		service.WithLoadContext(ctx),
+		service.WithAutosaveInterval(cfg.Persistence.Interval),
+	)
+	if err != nil {
+		l.Fatal("failed to initialize service", zap.Error(err))
+	}
+	svc.StartAutosave(ctx, func(err error) {
+		l.Warn("autosave failed", zap.Error(err))
+	})
+
 	h := transport.NewRouter(l, svc)
 
 	server := &stdhttp.Server{
-		Addr:         "127.0.0.1:11208",
+		Addr:         cfg.HTTP.Addr,
 		Handler:      h,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -57,6 +69,12 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		l.Error("http server shutdown error", zap.Error(err))
 	}
+
+	if err := svc.SaveSnapshot(shutdownCtx); err != nil {
+		l.Error("failed to persist state", zap.Error(err))
+	}
+
+	svc.WaitAutosave()
 
 	l.Info("http server stopped")
 }

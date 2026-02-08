@@ -9,8 +9,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
-	"scripts/swarm_stub/internal/service"
-	"scripts/swarm_stub/pkg/swarm"
+	"github.com/cxhub/swarm-mock/internal/service"
+	"github.com/cxhub/swarm-mock/pkg/swarm"
 )
 
 // Handler реализует HTTP-обработчики Swarm.

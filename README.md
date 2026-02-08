@@ -5,7 +5,7 @@
 ## Быстрый старт
 
 ```bash
-cd scripts/swarm_stub
+cd main
 go run ./cmd/server
 ```
 
@@ -41,7 +41,6 @@ TODO-комментарии в коде отмечают места, где бу
 ## Тесты
 
 ```bash
-cd scripts/swarm_stub
+cd main
 go test ./...
 ```
-

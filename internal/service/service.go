@@ -7,8 +7,9 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"time"
 
-	"scripts/swarm_stub/pkg/swarm"
+	"github.com/cxhub/swarm-mock/pkg/swarm"
 )
 
 // KVService описывает операции с KV-хранилищем Swarm.
@@ -66,10 +67,34 @@ func wrapStatus(err error, status int) error {
 	return &statusError{status: status, err: err}
 }
 
+// Persistence описывает хранилище снапшотов состояния Stub.
+type Persistence interface {
+	Load(ctx context.Context) ([]Tuple, error)
+	Save(ctx context.Context, tuples []Tuple) error
+}
+
+// StubOption конфигурирует создание Stub.
+type StubOption func(*stubConfig) error
+
+type stubConfig struct {
+	persistence      Persistence
+	loadCtx          context.Context
+	autosaveInterval time.Duration
+}
+
 // Stub реализует KVService, используя in-memory хранилище.
 type Stub struct {
 	mu   sync.RWMutex
 	data map[string]record
+
+	persistence Persistence
+
+	autosave struct {
+		interval time.Duration
+		mu       sync.Mutex
+		started  bool
+		wg       sync.WaitGroup
+	}
 }
 
 type record struct {
@@ -77,9 +102,69 @@ type record struct {
 	payload []byte
 }
 
-// NewStub создает Stub.
-func NewStub() *Stub {
-	return &Stub{data: make(map[string]record)}
+// NewStub создает Stub с указанными опциями.
+func NewStub(opts ...StubOption) (*Stub, error) {
+	cfg := stubConfig{
+		loadCtx: context.Background(),
+	}
+
+	for _, opt := range opts {
+		if err := opt(&cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	if cfg.loadCtx == nil {
+		cfg.loadCtx = context.Background()
+	}
+
+	stub := &Stub{
+		data:        make(map[string]record),
+		persistence: cfg.persistence,
+	}
+	stub.autosave.interval = cfg.autosaveInterval
+
+	if stub.persistence != nil {
+		tuples, err := stub.persistence.Load(cfg.loadCtx)
+		if err != nil {
+			return nil, fmt.Errorf("service: load snapshot: %w", err)
+		}
+		for _, tuple := range tuples {
+			stub.data[storageKey(tuple.K1, tuple.K2, tuple.K3)] = record{
+				key:     Key{K1: tuple.K1, K2: tuple.K2, K3: tuple.K3},
+				payload: copyBytes(tuple.Payload),
+			}
+		}
+	}
+
+	return stub, nil
+}
+
+// WithPersistence задаёт источник сохранения состояния для Stub.
+func WithPersistence(p Persistence) StubOption {
+	return func(cfg *stubConfig) error {
+		cfg.persistence = p
+		return nil
+	}
+}
+
+// WithLoadContext задаёт контекст, используемый при загрузке состояния.
+func WithLoadContext(ctx context.Context) StubOption {
+	return func(cfg *stubConfig) error {
+		cfg.loadCtx = ctx
+		return nil
+	}
+}
+
+// WithAutosaveInterval конфигурирует периодичность автосохранения.
+func WithAutosaveInterval(interval time.Duration) StubOption {
+	return func(cfg *stubConfig) error {
+		if interval < 0 {
+			return fmt.Errorf("service: autosave interval must be non-negative")
+		}
+		cfg.autosaveInterval = interval
+		return nil
+	}
 }
 
 // Get возвращает Tuple либо ошибку ErrNotFound.
@@ -209,6 +294,71 @@ func (s *Stub) Delete(ctx context.Context, keys Key) (bool, error) {
 	return true, nil
 }
 
+// SaveSnapshot выполняет сохранение текущего состояния через Persistence.
+func (s *Stub) SaveSnapshot(ctx context.Context) error {
+	if s.persistence == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	tuples := s.snapshot()
+	return s.persistence.Save(ctx, tuples)
+}
+
+// StartAutosave запускает периодическое сохранение состояния Stub.
+func (s *Stub) StartAutosave(ctx context.Context, onError func(error)) {
+	if s.persistence == nil || s.autosave.interval <= 0 {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	s.autosave.mu.Lock()
+	if s.autosave.started {
+		s.autosave.mu.Unlock()
+		return
+	}
+	s.autosave.started = true
+	s.autosave.mu.Unlock()
+
+	s.autosave.wg.Add(1)
+	go func() {
+		defer s.autosave.wg.Done()
+		ticker := time.NewTicker(s.autosave.interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := s.SaveSnapshot(ctx); err != nil {
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+						continue
+					}
+					if onError != nil {
+						onError(err)
+					}
+				}
+			}
+		}
+	}()
+}
+
+// WaitAutosave блокирует до завершения фонового воркера автосохранения.
+func (s *Stub) WaitAutosave() {
+	s.autosave.mu.Lock()
+	started := s.autosave.started
+	s.autosave.mu.Unlock()
+	if !started {
+		return
+	}
+	s.autosave.wg.Wait()
+}
+
 func (s *Stub) load(key Key) (record, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -228,6 +378,33 @@ func copyBytes(src []byte) []byte {
 	dst := make([]byte, len(src))
 	copy(dst, src)
 	return dst
+}
+
+func (s *Stub) snapshot() []Tuple {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	tuples := make([]Tuple, 0, len(s.data))
+	for _, rec := range s.data {
+		tuples = append(tuples, Tuple{
+			K1:      rec.key.K1,
+			K2:      rec.key.K2,
+			K3:      rec.key.K3,
+			Payload: copyBytes(rec.payload),
+		})
+	}
+
+	sort.Slice(tuples, func(i, j int) bool {
+		if tuples[i].K1 != tuples[j].K1 {
+			return tuples[i].K1 < tuples[j].K1
+		}
+		if tuples[i].K2 != tuples[j].K2 {
+			return tuples[i].K2 < tuples[j].K2
+		}
+		return tuples[i].K3 < tuples[j].K3
+	})
+
+	return tuples
 }
 
 func contextError(err error) error {
