@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -46,7 +47,7 @@ func Load() (Config, error) {
 
 	persistencePath := os.Getenv(envPersistencePath)
 	if persistencePath == "" {
-		persistencePath = "swarm_stub_snapshot.json"
+		persistencePath = filepath.Join("data", "swarm_stub_snapshot.json")
 	}
 
 	interval := time.Minute
