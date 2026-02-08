@@ -10,10 +10,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/cxhub/swarm-mock/internal/config"
-	transport "github.com/cxhub/swarm-mock/internal/http"
-	"github.com/cxhub/swarm-mock/internal/logger"
-	"github.com/cxhub/swarm-mock/internal/service"
+	"main/internal/config"
+	transport "main/internal/http"
+	"main/internal/logger"
+	"main/internal/service"
 )
 
 func main() {

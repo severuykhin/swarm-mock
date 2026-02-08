@@ -8,8 +8,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/cxhub/swarm-mock/internal/service"
-	"github.com/cxhub/swarm-mock/pkg/swarm"
+	"main/internal/service"
+	"main/pkg/swarm"
 )
 
 func TestRouter(t *testing.T) {

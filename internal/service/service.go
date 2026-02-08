@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cxhub/swarm-mock/pkg/swarm"
+	"main/pkg/swarm"
 )
 
 // KVService описывает операции с KV-хранилищем Swarm.

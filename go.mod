@@ -1,4 +1,4 @@
-module github.com/cxhub/swarm-mock/dev_env/swarm-mock
+module main
 
 go 1.24.0
 
