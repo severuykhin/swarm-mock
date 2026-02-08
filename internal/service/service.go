@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"main/pkg/swarm"
+	"swarm-stub/pkg/swarm"
 )
 
 // KVService описывает операции с KV-хранилищем Swarm.

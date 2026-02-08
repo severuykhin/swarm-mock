@@ -10,10 +10,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"main/internal/config"
-	transport "main/internal/http"
-	"main/internal/logger"
-	"main/internal/service"
+	"swarm-stub/internal/config"
+	transport "swarm-stub/internal/http"
+	"swarm-stub/internal/logger"
+	"swarm-stub/internal/service"
 )
 
 func main() {

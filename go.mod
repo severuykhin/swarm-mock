@@ -1,4 +1,4 @@
-module main
+module swarm-stub
 
 go 1.24.0
 
